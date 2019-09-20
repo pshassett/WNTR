@@ -68,10 +68,16 @@ AUTHOR = 'WNTR Developers'
 MAINTAINER_EMAIL = 'kaklise@sandia.gov'
 LICENSE = 'Revised BSD'
 URL = 'https://github.com/USEPA/WNTR'
+INSTALL_REQUIRES = ['networkx',
+                    'pandas',
+                    'numpy',
+                    'scipy',
+                    'matplotlib',
+                    'plotly']
 
 setuptools_kwargs = {
     'zip_safe': False,
-    'install_requires': [],
+    'install_requires': INSTALL_REQUIRES,
     'scripts': [],
     'include_package_data': True
 }
