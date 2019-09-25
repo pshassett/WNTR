@@ -73,11 +73,10 @@ INSTALL_REQUIRES = ['networkx',
                     'numpy',
                     'scipy',
                     'matplotlib',
-                    'plotly']
+                    'plotly',]
 
 setuptools_kwargs = {
     'zip_safe': False,
-    'install_requires': INSTALL_REQUIRES,
     'scripts': [],
     'include_package_data': True
 }
@@ -92,5 +91,6 @@ setup(name=DISTNAME,
       maintainer_email=MAINTAINER_EMAIL,
       license=LICENSE,
       url=URL,
+      install_requires=INSTALL_REQUIRES,
       **setuptools_kwargs)
 
