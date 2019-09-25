@@ -1,4 +1,5 @@
 from wntr import epanet
+from wntr import epanet22
 from wntr import network
 from wntr import morph
 from wntr import metrics
