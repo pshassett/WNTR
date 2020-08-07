@@ -33,7 +33,6 @@ from .elements import Junction, Reservoir, Tank
 from .elements import Pipe, Pump, HeadPump, PowerPump
 from .elements import Valve, PRValve, PSValve, PBValve, TCValve, FCValve, GPValve
 from .elements import Pattern, TimeSeries, Demands, Curve, Source
-from .graph import WntrMultiDiGraph
 from .controls import ControlPriority, _ControlType, TimeOfDayCondition, SimTimeCondition, ValueCondition, \
     TankLevelCondition, RelativeCondition, OrCondition, AndCondition, _CloseCVCondition, _OpenCVCondition, \
     _ClosePowerPumpCondition, _OpenPowerPumpCondition, _CloseHeadPumpCondition, _OpenHeadPumpCondition, \
@@ -82,8 +81,8 @@ class WaterNetworkModel(AbstractModel):
 
         # NetworkX Graph to store the pipe connectivity and node coordinates
 
-        self._Htol = 0.00015  # Head tolerance in meters.
-        self._Qtol = 2.8e-5  # Flow tolerance in m^3/s.
+        self._Htol = 0.0001524  # Head tolerance in meters.
+        self._Qtol = 2.83168e-6  # Flow tolerance in m^3/s.
 
         self._labels = None
 
@@ -610,38 +609,40 @@ class WaterNetworkModel(AbstractModel):
     
     ### # 
     ### Remove elements from the model
-    def remove_node(self, name, with_control=False):
+    def remove_node(self, name, with_control=False, force=False):
         """Removes a node from the water network model"""
         node = self.get_node(name)
-        if with_control:
-            x=[]
-            for control_name, control in self._controls.items():
-                if node in control.requires():
-                    logger.warning(control._control_type_str()+' '+control_name+' is being removed along with node '+name)
-                    x.append(control_name)
-            for i in x:
-                self.remove_control(i)
-        else:
-            for control_name, control in self._controls.items():
-                if node in control.requires():
-                    raise RuntimeError('Cannot remove node {0} without first removing control/rule {1}'.format(name, control_name))
+        if not force:
+            if with_control:
+                x=[]
+                for control_name, control in self._controls.items():
+                    if node in control.requires():
+                        logger.warning(control._control_type_str()+' '+control_name+' is being removed along with node '+name)
+                        x.append(control_name)
+                for i in x:
+                    self.remove_control(i)
+            else:
+                for control_name, control in self._controls.items():
+                    if node in control.requires():
+                        raise RuntimeError('Cannot remove node {0} without first removing control/rule {1}'.format(name, control_name))
         self._node_reg.__delitem__(name)
 
-    def remove_link(self, name, with_control=False):
+    def remove_link(self, name, with_control=False, force=False):
         """Removes a link from the water network model"""
         link = self.get_link(name)
-        if with_control:
-            x=[]
-            for control_name, control in self._controls.items():
-                if link in control.requires():
-                    logger.warning(control._control_type_str()+' '+control_name+' is being removed along with link '+name)
-                    x.append(control_name)
-            for i in x:
-                self.remove_control(i)
-        else:
-            for control_name, control in self._controls.items():
-                if link in control.requires():
-                    raise RuntimeError('Cannot remove link {0} without first removing control/rule {1}'.format(name, control_name))
+        if not force:
+            if with_control:
+                x=[]
+                for control_name, control in self._controls.items():
+                    if link in control.requires():
+                        logger.warning(control._control_type_str()+' '+control_name+' is being removed along with link '+name)
+                        x.append(control_name)
+                for i in x:
+                    self.remove_control(i)
+            else:
+                for control_name, control in self._controls.items():
+                    if link in control.requires():
+                        raise RuntimeError('Cannot remove link {0} without first removing control/rule {1}'.format(name, control_name))
         self._link_reg.__delitem__(name)
 
     def remove_pattern(self, name): 
@@ -794,15 +795,15 @@ class WaterNetworkModel(AbstractModel):
             min_head = tank.min_level+tank.elevation
             for link_name in all_links:
                 link = self.get_link(link_name)
-                link_has_cv = False
+                link_has_cv = False # flow leaving the tank (start node = tank)
                 if isinstance(link, Pipe):
                     if link.cv:
-                        if link.end_node == tank_name:
+                        if link.end_node_name == tank_name:
                             continue
                         else:
                             link_has_cv = True
                 elif isinstance(link, Pump):
-                    if link.end_node == tank_name:
+                    if link.end_node_name == tank_name:
                         continue
                     else:
                         link_has_cv = True
@@ -841,15 +842,15 @@ class WaterNetworkModel(AbstractModel):
             max_head = tank.max_level+tank.elevation
             for link_name in all_links:
                 link = self.get_link(link_name)
-                link_has_cv = False
+                link_has_cv = False # flow entering the tank (end node = tank)
                 if isinstance(link, Pipe):
                     if link.cv:
-                        if link.start_node == tank_name:
+                        if link.start_node_name == tank_name:
                             continue
                         else:
                             link_has_cv = True
                 if isinstance(link, Pump):
-                    if link.start_node == tank_name:
+                    if link.start_node_name == tank_name:
                         continue
                     else:
                         link_has_cv = True
@@ -1453,68 +1454,105 @@ class WaterNetworkModel(AbstractModel):
                  )
         return d
     
-    def get_graph(self):
+    def get_graph(self, node_weight=None, link_weight=None, modify_direction=False):
         """
-        Returns a networkx graph of the water network model
-
+        Returns a networkx MultiDiGraph of the water network model
+        
+        Parameters
+        ----------
+        node_weight :  dict or pandas Series (optional)
+            Node weights
+        link_weight : dict or pandas Series (optional)
+            Link weights.  
+        modify_direction : bool (optional)
+            If True, than if the link weight is negative, the link start and 
+            end node are switched and the abs(weight) is assigned to the link
+            (this is useful when weighting graphs by flowrate). If False, link 
+            direction and weight are not changed.
+            
         Returns
         --------
-        WaterNetworkModel networkx graph.
+        networkx MultiDiGraph
         """
-        graph = WntrMultiDiGraph()
+        G = nx.MultiDiGraph()
         
         for name, node in self.nodes():
-            graph.add_node(name)
-            nx.set_node_attributes(graph, name='pos', values={name: node.coordinates})
-            nx.set_node_attributes(graph, name='type', values={name:node.node_type})
-        
+            G.add_node(name)
+            nx.set_node_attributes(G, name='pos', values={name: node.coordinates})
+            nx.set_node_attributes(G, name='type', values={name: node.node_type})
+            
+            if node_weight is not None:
+                try: # weight nodes
+                    value = node_weight[name]
+                    nx.set_node_attributes(G, name='weight', values={name: value})
+                except:
+                    pass
+            
         for name, link in self.links():
             start_node = link.start_node_name
             end_node = link.end_node_name
-            graph.add_edge(start_node, end_node, key=name)
-            nx.set_edge_attributes(graph, name='type', 
-                        values={(start_node, end_node, name):link.link_type})
-        
-        return graph
+            G.add_edge(start_node, end_node, key=name)
+            nx.set_edge_attributes(G, name='type', 
+                        values={(start_node, end_node, name): link.link_type})
+                
+            if link_weight is not None:
+                try: # weight links
+                    value = link_weight[name]
+                    if modify_direction and value < 0: # change the direction of the link and value
+                        G.remove_edge(start_node, end_node, name)
+                        G.add_edge(end_node, start_node, name)
+                        nx.set_edge_attributes(G, name='type', 
+                                values={(end_node, start_node, name): link.link_type})
+                        nx.set_edge_attributes(G, name='weight', 
+                                values={(end_node, start_node, name): -value})
+                    else:
+                        nx.set_edge_attributes(G, name='weight', 
+                            values={(start_node, end_node, name): value})
+                except:
+                    pass
+            
+        return G
     
     def assign_demand(self, demand, pattern_prefix='ResetDemand'):
         """
         Assign demands using values in a DataFrame. 
         
-        New demands are specified in a pandas DataFrame indexed by simulation
-        time (in seconds) and one column for each node. The method resets
-        node demands by creating a new demand pattern for each node and
-        resetting the base demand to 1. The demand pattern is resampled to
-        match the water network model pattern timestep. This method can be
+        New demands are specified in a pandas DataFrame indexed by
+        time (in seconds). The method resets junction demands by creating a 
+        new demand pattern and using a base demand of 1. 
+        The demand pattern is resampled to match the water network model 
+        pattern timestep. This method can be
         used to reset demands in a water network model to demands from a
         pressure dependent demand simulation.
 
         Parameters
         ----------
         demand : pandas DataFrame
-            A pandas DataFrame containing demands (index = time, columns = node names)
+            A pandas DataFrame containing demands (index = time, columns = junction names)
 
         pattern_prefix: string
-            Pattern prefix, default = 'ResetDemand'
+            Pattern name prefix, default = 'ResetDemand'.  The junction name is 
+            appended to the prefix to create a new pattern name.  
+            If the pattern name already exists, an error is thrown and the user 
+            should use a different pattern prefix name.
         """
-        for node_name, node in self.nodes():
+        for junc_name in demand.columns:
             
             # Extract the node demand pattern and resample to match the pattern timestep
-            demand_pattern = demand.loc[:, node_name]
-            #demand_pattern.index = demand_pattern.index.astype('timedelta64[s]')
+            demand_pattern = demand.loc[:, junc_name]
             demand_pattern.index = pd.TimedeltaIndex(demand_pattern.index, 's')
             resample_offset = str(int(self.options.time.pattern_timestep))+'S'
-            demand_pattern = demand_pattern.resample(resample_offset).mean()
+            demand_pattern = demand_pattern.resample(resample_offset).mean() / self.options.hydraulic.demand_multiplier
 
             # Add the pattern
-            pattern_name = pattern_prefix + node_name
+            # If the pattern name already exists, this fails 
+            pattern_name = pattern_prefix + junc_name
             self.add_pattern(pattern_name, demand_pattern.tolist())
-            pattern = self.get_pattern(pattern_name)
-
+            
             # Reset base demand
-            if hasattr(node, 'demands'):
-                node.demands.clear()
-                node.demands.append((1.0, pattern, 'PDD'))
+            junction = self.get_node(junc_name)
+            junction.demand_timeseries_list.clear()
+            junction.demand_timeseries_list.append((1.0, pattern_name))
 
     def get_links_for_node(self, node_name, flag='ALL'):
         """

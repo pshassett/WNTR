@@ -5,13 +5,16 @@
 Hydraulic simulation
 ==============================
 
-WNTR contains two simulators: the **WNTRSimulator** and the **EpanetSimulator**.
+WNTR contains two simulators: the EpanetSimulator and the WNTRSimulator.
 See :ref:`software_framework` for more information on features and limitations of these simulators. 
 
 The EpanetSimulator can be used to run demand-driven hydraulic simulations
-using the EPANET 2 Programmer's Toolkit.  The simulator can also be 
+using the EPANET Programmer's Toolkit. The simulator can also be 
 used to run water quality simulations, as described in :ref:`water_quality_simulation`.  
-A hydraulic simulation using the EpanetSimulator is run using the following code.
+A hydraulic simulation using the EpanetSimulator is run using the following code:
+
+.. note:: 
+  EPANET refers to EPANET 2.00.12. Future releases of WNTR will include EPANET 2.2.0.
 
 .. doctest::
     :hide:
@@ -27,9 +30,9 @@ A hydraulic simulation using the EpanetSimulator is run using the following code
 	>>> sim = wntr.sim.EpanetSimulator(wn)
 	>>> results = sim.run_sim()
 
-The WNTRSimulator is a pure Python hydraulics simulation engine based on the same equations
-as EPANET.  The WNTRSimulator does not include equations to run water quality 
-simulations.  The WNTRSimulator includes the option to simulate leaks, and run hydraulic simulations
+The WNTRSimulator is a hydraulic simulation engine based on the same equations
+as EPANET. The WNTRSimulator does not include equations to run water quality 
+simulations. The WNTRSimulator includes the option to simulate leaks, and run hydraulic simulations
 in either demand-driven or pressure dependent demand mode ('DD' or 'PDD').
 A hydraulic simulation using the WNTRSimulator is run using the following code:
 
@@ -128,7 +131,7 @@ For :math:`q \geq 0`:
 These equations are symmetric across the origin
 and valid for any :math:`q`. Thus, this equation can be used for flow in
 either direction. However, the derivative with respect to :math:`q` at :math:`q = 0` 
-is :math:`0`. In certain scenarios, this can cause the Jacobian of the
+is :math:`0`. In certain scenarios, this can cause the Jacobian matrix of the
 set of hydraulic equations to become singular (when :math:`q=0`). 
 To overcome this limitation, the WNTRSimulator
 splits the domain of :math:`q` into six segments to
@@ -173,7 +176,7 @@ create a piecewise smooth function.
 Demand-driven simulation
 -------------------------
 
-In demand-driven simulation, the pressure in the system depends on the node demands.
+In a demand-driven simulation, the pressure in the system depends on the node demands.
 The mass balance and headloss equations described above are solved assuming 
 that node demands are known and satisfied.  
 This assumption is reasonable under normal operating conditions and for use in network design.  
@@ -214,17 +217,17 @@ Newton-Raphson algorithm.
 :numref:`fig-pressure-dependent` illustrates the pressure-demand relationship using both the demand-driven and pressure dependent demand simulations.
 In the example, 
 :math:`D_f` is 0.0025 m³/s (39.6 GPM),
-:math:`P_f` is 30 psi, and 
-:math:`P_0` is 5 psi.
+:math:`P_f` is 30 psi (21.097 m), and 
+:math:`P_0` is 5 psi (3.516 m).
 Using the demand-driven simulation, the demand is equal to :math:`D_f` regardless of pressure.  
 Using the pressure dependent demand simulation, the demand starts to decrease when the pressure is below :math:`P_f` and goes to 0 when pressure is below :math:`P_0`.
 
 .. _fig-pressure-dependent:
 .. figure:: figures/pressure_driven.png
-   :scale: 100 %
+   :width: 610
    :alt: Pressure driven example
    
-   Example relationship between pressure (p) and demand (d) using both the demand-driven and pressure dependent demand simulations.
+   Relationship between pressure (p) and demand (d) using both the demand-driven and pressure dependent demand simulations.
 
 The following example sets nominal and minimum pressure for each junction.  Note that nominal and minimum pressure can vary throughout the network.
 
@@ -252,9 +255,9 @@ where
 :math:`p` is the gauge pressure inside the pipe (Pa), 
 :math:`\alpha` is the discharge coefficient, and 
 :math:`\rho` is the density of the fluid.
-The default discharge coefficient is 0.75 (assuming turbulent flow), but 
+The default discharge coefficient is 0.75 (assuming turbulent flow) [Lamb01]_, but 
 the user can specify other values if needed.  
-The value of :math:`\alpha` is set to 0.5 (assuming large leaks out of steel pipes).  
+The value of :math:`\alpha` is set to 0.5 (assuming large leaks out of steel pipes) [Lamb01]_. 
 Leaks can be added to junctions and tanks.  
 A pipe break is modeled using a leak area large enough to drain the pipe.  
 WNTR includes methods to add leaks to any location along a pipe by splitting the pipe into two sections and adding a node. 
@@ -264,10 +267,10 @@ In the example, the diameter of the leak is set to 0.5 cm, 1.0 cm, and 1.5 cm.
 
 .. _fig-leak:
 .. figure:: figures/leak_demand.png
-   :scale: 100 %
+   :width: 619
    :alt: Leak demand
    
-   Example relationship between leak demand (d) and pressure (p).
+   Relationship between leak demand (d) and pressure (p).
 
 The following example adds a leak to the water network model.
 
@@ -315,12 +318,14 @@ To restart the simulation from time zero, the user has several options.
 
 2. Save the water network model to a file and reload that file each time a simulation is run.  
    A pickle file is generally used for this purpose.  
+   A pickle file is a binary file used to serialize and de-serialize a Python object.
    This option is useful when the water network model contains custom controls that would not be reset using the option 1, 
    or when the user wants to change operations between simulations.
-
+   
+   The following example saves the water network model to a file before using it in a simulation.
+   
    .. doctest::
 
-       >>> # Save the water network model to a file before using it in a simulation
        >>> import pickle
        >>> f=open('wn.pickle','wb')
        >>> pickle.dump(wn,f)
@@ -328,7 +333,10 @@ To restart the simulation from time zero, the user has several options.
        >>> sim = wntr.sim.WNTRSimulator(wn)
        >>> results = sim.run_sim()
     
-       >>> # Reload the water network model from the file before the next simulation
+   The next example reload the water network model from the file before the next simulation.
+   
+   .. doctest::
+   
        >>> f=open('wn.pickle','rb')
        >>> wn = pickle.load(f)
        >>> f.close()
@@ -336,7 +344,8 @@ To restart the simulation from time zero, the user has several options.
        >>> results = sim.run_sim()
     
 If these options do not cover user specific needs, then the water network
-model would need to be recreated between simulations or reset by hand.
+model would need to be recreated between simulations or reset manually by changing individual attributes to the desired
+values.
 Note that when using the EpanetSimulator, the model is reset each time it is used in 
 a simulation.
 
@@ -344,21 +353,21 @@ a simulation.
 Advanced: Customized models with WNTR's AML
 -------------------------------------------
 
-WNTR has a custom algebraic modeling language (AML) which is used for
+WNTR has a custom algebraic modeling language (AML) that is used for
 WNTR's hydraulic model (used in the
 :class:`~wntr.sim.core.WNTRSimulator`). This AML is primarily used for
 efficient evaluation of constraint residuals and derivatives. WNTR's
 AML drastically simplifies the implementation, maintenance,
 modification, and customization of hydraulic models. The AML allows
 defining variables and constraints in a natural way. For example,
-suppose we want to solve the following system of nonlinear equations.
+suppose the user wants to solve the following system of nonlinear equations.
 
 .. math::
 
    y - x^{2} = 0 \\
    y - x - 1 = 0
 
-We can create this model usin WNTR's AML as follows.
+To create this model using WNTR's AML, the following can be used:
    
 .. doctest::
 
@@ -369,7 +378,7 @@ We can create this model usin WNTR's AML as follows.
    >>> m.c1 = aml.Constraint(m.y - m.x**2)
    >>> m.c2 = aml.Constraint(m.y - m.x - 1)
 
-Before evaluating the constraint residuals or the jacobian, :func:`~wntr.sim.aml.aml.Model.set_structure` must be called:
+Before evaluating the constraint residuals or the Jacobian, :func:`~wntr.sim.aml.aml.Model.set_structure` must be called:
 
 .. doctest::
 
@@ -384,9 +393,9 @@ Before evaluating the constraint residuals or the jacobian, :func:`~wntr.sim.aml
        [-1.,  1.]])
 
 The methods :func:`~wntr.sim.aml.aml.Model.evaluate_residuals` and
-:func:`~wntr.sim.aml.aml.Model.evaluate_jacobian` return a numpy array
-and a scipy sparse csr matrix, respectively. Variable values can also
-be loaded with a numpy array. For example, a Newton
+:func:`~wntr.sim.aml.aml.Model.evaluate_jacobian` return a NumPy array
+and a SciPy sparse CSR matrix, respectively. Variable values can also
+be loaded with a NumPy array. For example, a Newton
 step (without a line search) would look something like
 
 .. doctest::
